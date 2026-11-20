@@ -1,0 +1,81 @@
+name: Build iOS IPA (Antigravity Remote)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    name: Build Unsigned iOS IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract Flutter project archive
+        run: unzip -o antigravity_remote.zip
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate iOS platform scaffolding
+        run: |
+          flutter create . \
+            --platforms=ios \
+            --org com.antigravity.remote \
+            --project-name antigravity_remote
+
+      - name: Configure iOS Info.plist permissions and display name
+        run: |
+          PLIST="ios/Runner/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Antigravity Remote" "$PLIST" || \
+            /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Antigravity Remote" "$PLIST"
+
+          /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription 'Cần quyền camera để quét mã QR Remote Control.'" "$PLIST" || \
+            /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Cần quyền camera để quét mã QR Remote Control.'" "$PLIST"
+
+          /usr/libexec/PlistBuddy -c "Set :NSLocalNetworkUsageDescription 'Cần quyền mạng nội bộ để kết nối tới máy tính chạy Antigravity.'" "$PLIST" || \
+            /usr/libexec/PlistBuddy -c "Add :NSLocalNetworkUsageDescription string 'Cần quyền mạng nội bộ để kết nối tới máy tính chạy Antigravity.'" "$PLIST"
+
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Set :NSAppTransportSecurity:NSAllowsArbitraryLoads true" "$PLIST" || \
+            /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate Flutter Podfile & set iOS 13.0 deployment target
+        run: |
+          flutter build ios --config-only --release --no-codesign
+          if [ -f ios/Podfile ]; then
+            sed -i '' "s/^# platform :ios, '.*'/platform :ios, '13.0'/" ios/Podfile
+            sed -i '' "s/^platform :ios, '.*'/platform :ios, '13.0'/" ios/Podfile
+          fi
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 12.0;/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/g' ios/Runner.xcodeproj/project.pbxproj
+
+      - name: Run static analysis & unit tests
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build iOS release app (unsigned)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package Runner.app into AntigravityRemote.ipa
+        run: |
+          mkdir -p build/ipa/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ipa/Payload/Runner.app
+          cd build/ipa
+          zip -r -9 AntigravityRemote.ipa Payload
+
+      - name: Upload AntigravityRemote.ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AntigravityRemote-ipa
+          path: build/ipa/AntigravityRemote.ipa
+          retention-days: 30
