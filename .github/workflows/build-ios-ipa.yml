@@ -49,14 +49,14 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Generate Flutter Podfile & set iOS 13.0 deployment target
+      - name: Generate Flutter Podfile & set iOS 15.5 deployment target
         run: |
-          flutter build ios --config-only --release --no-codesign
+          sed -i '' -E 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;/IPHONEOS_DEPLOYMENT_TARGET = 15.5;/g' ios/Runner.xcodeproj/project.pbxproj
+          flutter build ios --config-only --release --no-codesign || true
           if [ -f ios/Podfile ]; then
-            sed -i '' "s/^# platform :ios, '.*'/platform :ios, '13.0'/" ios/Podfile
-            sed -i '' "s/^platform :ios, '.*'/platform :ios, '13.0'/" ios/Podfile
+            sed -i '' -E "s/^#?[[:space:]]*platform :ios, '.*'/platform :ios, '15.5'/" ios/Podfile
           fi
-          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = 12.0;/IPHONEOS_DEPLOYMENT_TARGET = 13.0;/g' ios/Runner.xcodeproj/project.pbxproj
+          (cd ios && pod install --repo-update)
 
       - name: Run static analysis & unit tests
         run: |
